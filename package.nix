@@ -121,7 +121,14 @@ buildGoModule (finalAttrs: {
     testProductionFiles fuse fuse_container_test.go '^TestNetworkOwningContainer$'
     (cd bazil && testProductionFiles fs lookup_identity_test.go '^Test(LookupIdentityFreshAttributes|GetattrDispatchInode|NetworkReadDirDispatch)$')
     go test ./mount -run '^TestSysfsRegistration(Snapshot|RootMetadata)$' -count=1
-    go test ./sysfstransfer
+    # A default Nix Linux sandbox does not bind sysfs. CI supplies the read-only
+    # fixture and verifies that both mount-dependent cases actually ran.
+    if awk '$5 == "/sys" && $(NF-2) == "sysfs" { found = 1 } END { exit !found }' /proc/self/mountinfo; then
+      go test -v ./sysfstransfer
+    else
+      echo "Skipping sysfs mount fixture cases because /sys is absent in the build sandbox"
+      go test -v ./sysfstransfer -skip '^(TestMissingAcquisition|TestRootMountIDMismatch)$'
+    fi
     go test -tags 'netgo osusergo' ./seccomp \
       -run '^TestProc(PolicyBeforeNestedTransfer|RequesterThreadPidfd|TransferInvalidNotificationDoesNotLaunch|TransferRealNotification)$' -count=1
     runHook postCheck
