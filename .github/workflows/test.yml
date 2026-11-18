@@ -1,0 +1,16 @@
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    uses: ./.github/workflows/native-build.yml
+    with:
+      source-ref: ${{ github.event.pull_request.head.sha || github.sha }}

@@ -1,0 +1,142 @@
+name: Release
+
+on:
+  pull_request_target:
+    types:
+      - closed
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: release-${{ github.repository }}-main
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Prepare release
+    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
+    if: >-
+      ${{ github.event.pull_request.merged == true
+      && github.event.pull_request.base.ref == 'main'
+      && startsWith(github.event.pull_request.head.ref, 'feature/') }}
+    outputs:
+      release_required: ${{ steps.compute.outputs.release_required }}
+      release_kind: ${{ steps.compute.outputs.release_kind }}
+      previous_tag: ${{ steps.compute.outputs.previous_tag }}
+      git_tag: ${{ steps.compute.outputs.git_tag }}
+      tag_exists: ${{ steps.compute.outputs.tag_exists }}
+    env:
+      RELEASE_BRANCH: main
+    steps:
+      - name: Check out merge commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --force --tags origin
+
+      - name: Fetch PR head for git fallback
+        continue-on-error: true
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          git fetch --force origin "refs/heads/${PR_BASE_REF}:refs/remotes/origin/${PR_BASE_REF}" || true
+          git fetch --force origin "refs/pull/${PR_NUMBER}/head:refs/remotes/origin/pull/${PR_NUMBER}/head"
+
+      - name: Compute release metadata
+        id: compute
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MERGE_COMMIT_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_COMMIT_COUNT: ${{ github.event.pull_request.commits }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_BODY: ${{ github.event.pull_request.body || '' }}
+          PR_TITLE: ${{ github.event.pull_request.title || '' }}  # diagnostics only; release classification ignores PR titles
+        run: python3 scripts/release/compute_release.py
+
+      - name: Skip when no release is required
+        if: steps.compute.outputs.release_required != 'true'
+        run: echo "No releasable commit messages were found for this merged pull request."
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.release_required == 'true'
+    uses: ./.github/workflows/native-build.yml
+    with:
+      source-ref: ${{ github.event.pull_request.merge_commit_sha }}
+      save-records: true
+
+  publish:
+    name: Publish release
+    needs: [prepare, build]
+    permissions:
+      contents: write
+      pull-requests: read
+    runs-on: ${{ vars.ACTIONS_RUNNER || 'ubuntu-latest' }}
+    if: >-
+      ${{ always()
+      && needs.prepare.result == 'success'
+      && needs.build.result == 'success'
+      && needs.prepare.outputs.release_required == 'true' }}
+    env:
+      RELEASE_BRANCH: main
+    steps:
+      - name: Check out merge commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Fetch tags
+        run: git fetch --force --tags origin
+      - name: Download both native build records
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          pattern: build-record-*
+          path: .github/tmp/build-records
+          merge-multiple: true
+
+      - name: Check build records
+        run: |
+          test -s .github/tmp/build-records/build-record-aarch64-linux.md
+          test -s .github/tmp/build-records/build-record-x86_64-linux.md
+
+      - name: Generate release notes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >-
+          mkdir -p .github/tmp &&
+          python3 scripts/release/generate_release_notes.py
+          --repo "${GITHUB_REPOSITORY}"
+          --previous-tag "${{ needs.prepare.outputs.previous_tag }}"
+          --target "${{ github.event.pull_request.merge_commit_sha }}"
+          --pr-number "${{ github.event.pull_request.number }}"
+          --output .github/tmp/release-notes.md
+
+      - name: Create annotated git tag
+        if: needs.prepare.outputs.release_required == 'true' && needs.prepare.outputs.tag_exists != 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ needs.prepare.outputs.git_tag }}" -m "Release ${{ needs.prepare.outputs.git_tag }}"
+          git push origin "${{ needs.prepare.outputs.git_tag }}"
+
+      - name: Create or update GitHub Release
+        uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
+        with:
+          tag_name: ${{ needs.prepare.outputs.git_tag }}
+          target_commitish: ${{ github.event.pull_request.merge_commit_sha }}
+          body_path: .github/tmp/release-notes.md
+          draft: false
+          prerelease: false
+          generate_release_notes: false
+          files: .github/tmp/build-records/build-record-*.md
+          fail_on_unmatched_files: true
