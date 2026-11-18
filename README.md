@@ -20,6 +20,8 @@ nix build --no-link "github:michibiki-io/sysbox-proc-transfer-nix/$rev#sysbox-pr
 
 Release jobs build and test both targets on their native runners. The release contains source and build records with pinned input checksums and the SHA-256 of each executable.
 
+The Nix build links `sysbox-fs` against glibc and libseccomp from the Nix store. Both mount helpers are statically linked.
+
 ### Use with NixOS
 
 Add the following to an existing configuration that imports the host's `services.sysboxProcTransfer` module. Replace the placeholder with the same full commit SHA used to build the package.
@@ -47,7 +49,9 @@ The consuming module sets the daemon and proc helper paths. For sysfs transfer, 
 
 ### Verification
 
-The native builds run the focused checks from the pinned upstream Docker build. The runtime scope for this package is arm64 NixOS procfs using upstream `tests/runtime/verify.sh` as a non-root user. Confirm that the running daemon and configured proc helper use the selected package before running the verifier. amd64 and sysfs runtime verification are out of scope for this package's initial acceptance. The upstream sysfs consumer gate remains pending.
+The native CI builds run the focused checks from the pinned upstream Docker build. Two regression tests need a sysfs mount in the Linux build sandbox. CI adds `/sys` with `extra-sandbox-paths = /sys` and checks that both tests passed. On a default Nix sandbox without that mount, the build log identifies the two fixture-dependent tests it skips.
+
+The runtime scope for this package is arm64 NixOS procfs using upstream `tests/runtime/verify.sh` as a non-root user. Confirm that the running daemon and configured proc helper use the selected package before running the verifier. amd64 and sysfs runtime verification are out of scope for this package's initial acceptance. The upstream sysfs consumer gate remains pending.
 
 ## 日本語
 
@@ -64,6 +68,8 @@ nix build --no-link "github:michibiki-io/sysbox-proc-transfer-nix/$rev#sysbox-pr
 
 リリースジョブは各アーキテクチャのネイティブランナーでビルドとテストを実行します。リリースではソースと、入力のチェックサムおよび実行ファイルごとの SHA-256 を記録したビルド記録を配布します。
 
+Nix ビルドの `sysbox-fs` は、Nix ストア内の glibc と libseccomp に動的リンクします。2つのマウント用ヘルパーは静的リンクです。
+
 ### NixOS で利用する
 
 ホスト側の `services.sysboxProcTransfer` モジュールを読み込んでいる構成に、[設定例](#use-with-nixos) を追加します。参照にはビルドで指定した完全なコミット SHA を使います。
@@ -72,4 +78,6 @@ nix build --no-link "github:michibiki-io/sysbox-proc-transfer-nix/$rev#sysbox-pr
 
 ### 検証
 
-ビルド時に、固定した上流の Docker ビルドが指定する回帰テストを実行します。実行時の検証対象は arm64 NixOS 上の procfs です。稼働中のデーモンと設定された proc ヘルパーが選択したパッケージを参照することを確認してから、構成済みの Sysbox コンテナ内で上流の `tests/runtime/verify.sh` を一般ユーザーとして実行します。amd64 と sysfs の実行時検証は初回の受け入れ範囲外で、上流の sysfs 利用側の受け入れ検証は未完了です。
+ネイティブランナーでの CI は、固定した上流の Docker ビルドが指定する回帰テストを実行します。このうち2件はビルド用の Linux サンドボックス内に sysfs マウントが必要です。CI は `extra-sandbox-paths = /sys` で `/sys` を渡し、2件の成功を確認します。標準の Nix サンドボックスでこのマウントが存在しない場合、該当する2件をスキップしたことがビルドログに出ます。
+
+実行時の検証対象は arm64 NixOS 上の procfs です。稼働中のデーモンと設定された proc ヘルパーが選択したパッケージを参照することを確認してから、構成済みの Sysbox コンテナ内で上流の `tests/runtime/verify.sh` を一般ユーザーとして実行します。amd64 と sysfs の実行時検証は初回の受け入れ範囲外で、上流の sysfs 利用側の受け入れ検証は未完了です。

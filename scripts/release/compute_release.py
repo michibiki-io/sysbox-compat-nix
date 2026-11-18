@@ -264,7 +264,6 @@ def main() -> int:
     release_kind = classify_release(commits) if commits else "none"
     previous_tag = previous_tag_for_merge(merge_sha)
     git_tag = compute_next_tag(previous_tag, release_kind)
-    docker_tag = git_tag[1:] if git_tag.startswith("v") else ""
     tag_exists = "false"
 
     if git_tag:
@@ -283,7 +282,6 @@ def main() -> int:
             "release_kind": release_kind,
             "previous_tag": previous_tag,
             "git_tag": git_tag,
-            "docker_tag": docker_tag,
             "tag_exists": tag_exists,
         }
     )

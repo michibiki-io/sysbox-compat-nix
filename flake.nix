@@ -32,7 +32,7 @@
       flake = false;
     };
     legacyProtobuf = {
-      url = "github:golang/protobuf/v1.3.5";
+      url = "github:golang/protobuf/84668698ea25b64748563aa20726db66a6b8d299"; # v1.3.5
       flake = false;
     };
   };

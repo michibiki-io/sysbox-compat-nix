@@ -63,8 +63,8 @@
       },
       "original": {
         "owner": "golang",
-        "ref": "v1.3.5",
         "repo": "protobuf",
+        "rev": "84668698ea25b64748563aa20726db66a6b8d299",
         "type": "github"
       }
     },
