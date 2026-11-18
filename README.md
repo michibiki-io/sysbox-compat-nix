@@ -49,7 +49,7 @@ The consuming module sets the daemon and proc helper paths. For sysfs transfer, 
 
 ### Verification
 
-The native CI builds run the focused checks from the pinned upstream Docker build. Two regression tests need a sysfs mount in the Linux build sandbox. CI adds `/sys` with `extra-sandbox-paths = /sys` and checks that both tests passed. On a default Nix sandbox without that mount, the build log identifies the two fixture-dependent tests it skips.
+The native CI builds run the focused checks from the pinned upstream Docker build. Two regression tests need a sysfs mount in the Linux build sandbox. CI adds `/sys` with `extra-sandbox-paths = /sys` and checks that both tests passed. On a default Nix sandbox without that mount, the build logs that it skips the sysfs mount fixture cases.
 
 The runtime scope for this package is arm64 NixOS procfs using upstream `tests/runtime/verify.sh` as a non-root user. Confirm that the running daemon and configured proc helper use the selected package before running the verifier. amd64 and sysfs runtime verification are out of scope for this package's initial acceptance. The upstream sysfs consumer gate remains pending.
 
@@ -72,12 +72,12 @@ Nix ビルドの `sysbox-fs` は、Nix ストア内の glibc と libseccomp に�
 
 ### NixOS で利用する
 
-ホスト側の `services.sysboxProcTransfer` モジュールを読み込んでいる構成に、[設定例](#use-with-nixos) を追加します。参照にはビルドで指定した完全なコミット SHA を使います。
+ホスト側の `services.sysboxProcTransfer` モジュールを読み込んでいる構成に設定を追加します。Flake の参照にはビルドで指定した完全なコミット SHA を使います。具体的な記述は、英語節の [NixOS 設定例](#use-with-nixos) を参照してください。
 
-デーモンと proc ヘルパーのパスは利用側モジュールが設定します。sysfs 転送も使う場合は、設定例の `SYSBOX_SYSFS_TRANSFER_HELPER` に同じパッケージのヘルパーを指定します。コンテナの登録には `/sys` のマウントと保護情報が必要です。転送には `/sys` が型 `sysfs` かつ mountinfo の Root が `/` であることと、外側 rootfs に実ディレクトリの `/tmp` があることが必要です。[上流の互換性文書](https://github.com/michibiki-io/sysbox-proc-transfer/blob/122de40f8a8ad70973f827fe59ab9d8a60478ded/docs/compatibility.md)
+デーモンと proc ヘルパーのパスは利用側モジュールが設定します。sysfs 転送も使う場合は、設定例の `SYSBOX_SYSFS_TRANSFER_HELPER` に同じパッケージのヘルパーを指定します。コンテナの登録には `/sys` のマウントと保護情報が必要です。転送には `/sys` が型 `sysfs` かつ mountinfo の Root が `/` であることと、外側 rootfs に実ディレクトリの `/tmp` があることが必要です。詳細は [上流の互換性文書](https://github.com/michibiki-io/sysbox-proc-transfer/blob/122de40f8a8ad70973f827fe59ab9d8a60478ded/docs/compatibility.md) を参照してください。
 
 ### 検証
 
-ネイティブランナーでの CI は、固定した上流の Docker ビルドが指定する回帰テストを実行します。このうち2件はビルド用の Linux サンドボックス内に sysfs マウントが必要です。CI は `extra-sandbox-paths = /sys` で `/sys` を渡し、2件の成功を確認します。標準の Nix サンドボックスでこのマウントが存在しない場合、該当する2件をスキップしたことがビルドログに出ます。
+ネイティブランナーでの CI は、固定した上流の Docker ビルドが指定する回帰テストを実行します。このうち2件はビルド用の Linux サンドボックス内に sysfs マウントが必要です。CI は `extra-sandbox-paths = /sys` で `/sys` を渡し、2件の成功を確認します。標準の Nix サンドボックスにこのマウントがなければ、sysfs マウントを必要とするテストを省略したことがビルドログに出ます。
 
 実行時の検証対象は arm64 NixOS 上の procfs です。稼働中のデーモンと設定された proc ヘルパーが選択したパッケージを参照することを確認してから、構成済みの Sysbox コンテナ内で上流の `tests/runtime/verify.sh` を一般ユーザーとして実行します。amd64 と sysfs の実行時検証は初回の受け入れ範囲外で、上流の sysfs 利用側の受け入れ検証は未完了です。
