@@ -1,0 +1,171 @@
+{
+  "nodes": {
+    "fs": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785116786,
+        "narHash": "sha256-6RYD1UEnxiAr+tEhuaXZhY076tRpokGwU22VjB/pkgE=",
+        "owner": "nestybox",
+        "repo": "sysbox-fs",
+        "rev": "c3d2ebc65102e32e74e383675f03b45556326888",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nestybox",
+        "repo": "sysbox-fs",
+        "rev": "c3d2ebc65102e32e74e383675f03b45556326888",
+        "type": "github"
+      }
+    },
+    "fuse": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1752278198,
+        "narHash": "sha256-ircAg70dYdR2grAVjXIDssM85BWakT2znZyNIWtQYRY=",
+        "owner": "nestybox",
+        "repo": "fuse",
+        "rev": "5ce319439091b08f33b149cb2482039f1b0a24fe",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nestybox",
+        "repo": "fuse",
+        "rev": "5ce319439091b08f33b149cb2482039f1b0a24fe",
+        "type": "github"
+      }
+    },
+    "ipc": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1726968514,
+        "narHash": "sha256-vEqyh5lQvqMTHTDyraSN0AD+YFHTcJ+tReIXoquBrHA=",
+        "owner": "nestybox",
+        "repo": "sysbox-ipc",
+        "rev": "f05151f4b4c1df63d7fd241577ca032905c1bd0e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nestybox",
+        "repo": "sysbox-ipc",
+        "rev": "f05151f4b4c1df63d7fd241577ca032905c1bd0e",
+        "type": "github"
+      }
+    },
+    "legacyProtobuf": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1584050823,
+        "narHash": "sha256-eL4Kc/qUTJYIk8UPdbDkdD9uaIzB8/bdRDbNLUgKbb4=",
+        "owner": "golang",
+        "repo": "protobuf",
+        "rev": "84668698ea25b64748563aa20726db66a6b8d299",
+        "type": "github"
+      },
+      "original": {
+        "owner": "golang",
+        "repo": "protobuf",
+        "rev": "84668698ea25b64748563aa20726db66a6b8d299",
+        "type": "github"
+      }
+    },
+    "libs": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785116610,
+        "narHash": "sha256-KUZfFo0lQHsueWOs4qGhup1MAqJEjwtHe5bwxViNnvc=",
+        "owner": "nestybox",
+        "repo": "sysbox-libs",
+        "rev": "cacac19395528afa42b467a980b05d8d1c6d646c",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nestybox",
+        "repo": "sysbox-libs",
+        "rev": "cacac19395528afa42b467a980b05d8d1c6d646c",
+        "type": "github"
+      }
+    },
+    "nixpkgs": {
+      "locked": {
+        "lastModified": 1794890597,
+        "narHash": "sha256-lME2lHoDHAaSHP3/okgiVoJ0icVEvsQH8LeU3We7tcc=",
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "04906337b6d53e8bb0eaf0470ae9f070a4d4eb55",
+        "type": "github"
+      },
+      "original": {
+        "owner": "NixOS",
+        "repo": "nixpkgs",
+        "rev": "04906337b6d53e8bb0eaf0470ae9f070a4d4eb55",
+        "type": "github"
+      }
+    },
+    "root": {
+      "inputs": {
+        "fs": "fs",
+        "fuse": "fuse",
+        "ipc": "ipc",
+        "legacyProtobuf": "legacyProtobuf",
+        "libs": "libs",
+        "nixpkgs": "nixpkgs",
+        "root": "root_2",
+        "runc": "runc",
+        "transfer": "transfer"
+      }
+    },
+    "root_2": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785534754,
+        "narHash": "sha256-jmtzBFQQXh9jnUl9bgDOSbGrpH4xa44YqUIfYy5twSM=",
+        "owner": "nestybox",
+        "repo": "sysbox",
+        "rev": "82881aaaf2ce22ad0ff81487f458162908cb933f",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nestybox",
+        "repo": "sysbox",
+        "rev": "82881aaaf2ce22ad0ff81487f458162908cb933f",
+        "type": "github"
+      }
+    },
+    "runc": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1785534218,
+        "narHash": "sha256-eeWa/sOMWeslEgm3qT8llZG1xwcszCglnvWuGTgR6hg=",
+        "owner": "nestybox",
+        "repo": "sysbox-runc",
+        "rev": "081856cc5d17e7095f066b08d0eca6bb0b515c47",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nestybox",
+        "repo": "sysbox-runc",
+        "rev": "081856cc5d17e7095f066b08d0eca6bb0b515c47",
+        "type": "github"
+      }
+    },
+    "transfer": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792199986,
+        "narHash": "sha256-ZI154x46aPIlgiKsHSP/prgbzq3LsEizrPY3oegZAPM=",
+        "owner": "michibiki-io",
+        "repo": "sysbox-proc-transfer",
+        "rev": "122de40f8a8ad70973f827fe59ab9d8a60478ded",
+        "type": "github"
+      },
+      "original": {
+        "owner": "michibiki-io",
+        "repo": "sysbox-proc-transfer",
+        "rev": "122de40f8a8ad70973f827fe59ab9d8a60478ded",
+        "type": "github"
+      }
+    }
+  },
+  "root": "root",
+  "version": 7
+}
