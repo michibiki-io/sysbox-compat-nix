@@ -1,5 +1,22 @@
 {
   "nodes": {
+    "cilium": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1792764440,
+        "narHash": "sha256-VA9b7KuLlyVsI1gON6oXm0s/JTKED9wHGGJ1cMeOVJI=",
+        "owner": "cilium",
+        "repo": "cilium",
+        "rev": "beb276d2f38d4aadfda14710acf8d14a0f1ba723",
+        "type": "github"
+      },
+      "original": {
+        "owner": "cilium",
+        "repo": "cilium",
+        "rev": "beb276d2f38d4aadfda14710acf8d14a0f1ba723",
+        "type": "github"
+      }
+    },
     "fs": {
       "flake": false,
       "locked": {
@@ -103,6 +120,7 @@
     },
     "root": {
       "inputs": {
+        "cilium": "cilium",
         "fs": "fs",
         "fuse": "fuse",
         "ipc": "ipc",
@@ -151,17 +169,17 @@
     "transfer": {
       "flake": false,
       "locked": {
-        "lastModified": 1795398858,
-        "narHash": "sha256-Z3IbBxFKlf9NxZR/FX8LUmtVX+L9oNKOsomKzP9k0mg=",
+        "lastModified": 1795445179,
+        "narHash": "sha256-Em6fpCVmR2I1l20lz8/Ub3fi0fqf6dC5VhuR3yKYVdM=",
         "owner": "michibiki-io",
         "repo": "sysbox-proc-transfer",
-        "rev": "92292991eaef1e4b766c66e8a6d2ae8765b94af0",
+        "rev": "d0dd59c303feef1639407fb70d9408201a3a9786",
         "type": "github"
       },
       "original": {
         "owner": "michibiki-io",
         "repo": "sysbox-proc-transfer",
-        "rev": "92292991eaef1e4b766c66e8a6d2ae8765b94af0",
+        "rev": "d0dd59c303feef1639407fb70d9408201a3a9786",
         "type": "github"
       }
     }

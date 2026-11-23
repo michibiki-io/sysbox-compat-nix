@@ -4,7 +4,11 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/04906337b6d53e8bb0eaf0470ae9f070a4d4eb55";
     transfer = {
-      url = "github:michibiki-io/sysbox-proc-transfer/92292991eaef1e4b766c66e8a6d2ae8765b94af0";
+      url = "github:michibiki-io/sysbox-proc-transfer/d0dd59c303feef1639407fb70d9408201a3a9786";
+      flake = false;
+    };
+    cilium = {
+      url = "github:cilium/cilium/beb276d2f38d4aadfda14710acf8d14a0f1ba723";
       flake = false;
     };
     root = {
@@ -45,9 +49,15 @@
         let
           pkgs = import nixpkgs { inherit system; };
           package = pkgs.callPackage ./package.nix { inherit inputs; };
+          ciliumRuntime = pkgs.callPackage ./cilium-runtime.nix {
+            inherit inputs;
+            standard = package;
+          };
         in
         {
           sysbox-proc-transfer = package;
+          sysbox-cilium-lab = package.override { inherit ciliumRuntime; };
+          cilium-warning-agent = pkgs.callPackage ./cilium-warning-agent.nix { inherit inputs; };
           default = package;
         }
       );

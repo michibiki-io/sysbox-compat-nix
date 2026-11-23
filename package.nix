@@ -9,10 +9,13 @@
   protobuf,
   runCommand,
   stdenv,
+  ciliumRuntime ? null,
 }:
 
 let
   inherit (inputs) transfer;
+  ciliumLab = ciliumRuntime != null;
+  variant = if ciliumLab then "cilium-lab" else "proc-sysfs-transfer";
   lock = builtins.fromJSON (builtins.readFile "${transfer}/build/sources.lock.json");
   sourceChecks = lib.mapAttrsToList (
     name: revision:
@@ -52,20 +55,23 @@ assert lock.schema_version == 1;
 assert lib.all lib.id sourceChecks;
 assert lock.generator == "github.com/golang/protobuf/protoc-gen-go@v1.3.5";
 buildGoModule (finalAttrs: {
-  pname = "sysbox-proc-transfer";
+  pname = if ciliumLab then "sysbox-cilium-lab" else "sysbox-proc-transfer";
   version = "${lock.upstream_tag}-${builtins.substring 0 7 transfer.rev}";
   src = sourceTree;
   modRoot = "sysbox-fs";
   subPackages = [ "cmd/sysbox-fs" ];
   proxyVendor = true;
-  passthru.vendorHash = finalAttrs.vendorHash;
+  passthru = { inherit (finalAttrs) vendorHash; } // lib.optionalAttrs ciliumLab {
+    runtimeVendorHash = ciliumRuntime.vendorHash;
+  };
   vendorHash = "sha256-8PitbwNlnJjFcNI4P2fOCzW10qq98WueH5z8xkXutJI=";
 
   patches = [
     "${transfer}/patches/proc-transfer.patch"
     "${transfer}/patches/sysfs-transfer.patch"
     "${transfer}/patches/fuse-overlay-mount.patch"
-  ];
+  ]
+  ++ lib.optional ciliumLab "${transfer}/patches/cilium-bpf-lab.patch";
   nativeBuildInputs = [ pkg-config protobuf protocGenGo ];
   buildInputs = [ libseccomp ];
   env.CGO_ENABLED = 1;
@@ -89,8 +95,8 @@ buildGoModule (finalAttrs: {
   ldflags = [
     "-linkmode=external"
     "-X main.edition=Community"
-    "-X main.version=0.7.1-proc-sysfs-transfer"
-    "-X main.commitId=${lock.components.fs.revision}+proc-sysfs-transfer"
+    "-X main.version=0.7.1-${variant}"
+    "-X main.commitId=${lock.components.fs.revision}+${variant}"
   ];
 
   doCheck = true;
@@ -138,6 +144,11 @@ buildGoModule (finalAttrs: {
       "$tests/unit/fuse-mount-lookup.c" -o fuse-mount-lookup-test
     ./fuse-mount-lookup-test
     echo 'PASS: fuse-mount-lookup C regression'
+  ''
+  + lib.optionalString ciliumLab ''
+    go test -v -tags 'netgo osusergo' ./seccomp -run '^Test(PerfOutputLab|CiliumJITProbe)' -count=1
+  ''
+  + ''
     runHook postCheck
   '';
 
@@ -147,6 +158,9 @@ buildGoModule (finalAttrs: {
         "${transfer}/helper/$helper.c" -o "$out/bin/$helper"
     done
     install -Dm644 "${transfer}/build/sources.lock.json" "$out/share/sysbox-proc-transfer/sources.lock.json"
+  ''
+  + lib.optionalString ciliumLab ''
+    ln -s "${ciliumRuntime}/bin/sysbox-runc" "$out/bin/sysbox-runc"
   '';
 
   meta = {
