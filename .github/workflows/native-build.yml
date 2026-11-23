@@ -7,6 +7,10 @@ on:
         description: Commit to build
         type: string
         required: true
+      build-lab:
+        description: Build and check the opt-in Sysbox and Cilium lab outputs
+        type: boolean
+        default: false
       save-records:
         description: Pass the build records to the release job
         type: boolean
@@ -84,6 +88,43 @@ jobs:
             printf '```\n'
           } > "$record"
           cat "$record" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build the opt-in Sysbox and Cilium lab outputs
+        if: inputs.build-lab
+        run: |
+          lab=".#packages.$NIX_SYSTEM.sysbox-cilium-lab"
+          agent=".#packages.$NIX_SYSTEM.cilium-warning-agent"
+          nix build --no-update-lock-file --print-build-logs --out-link result-lab "$lab"
+          nix log "$lab" > build-lab.log
+          for test in TestPerfOutputLabScope TestPerfOutputLabAttrs TestCiliumJITProbeRequest TestCiliumJITProbeReply; do
+            grep -F -- "--- PASS: $test (" build-lab.log
+          done
+          for name in sysbox-fs sysbox-runc proc-mount-helper sysfs-mount-helper; do
+            test -x "result-lab/bin/$name"
+          done
+
+          nix build --no-update-lock-file --print-build-logs --out-link result-agent "$agent"
+          cilium_rev=$(jq -er '.nodes.cilium.locked.rev' flake.lock)
+          result-agent/bin/cilium-agent --version | grep -F -- "1.20.4 $cilium_rev 2026-10-23 go version"
+          readelf --program-headers result-agent/bin/cilium-agent > agent-elf.log
+          if grep -Eq '^[[:space:]]*(INTERP|DYNAMIC)[[:space:]]' agent-elf.log; then
+            echo "The Cilium Agent requires a dynamic loader" >&2
+            exit 1
+          fi
+
+          {
+            printf '## Opt-in lab binaries (%s)\n\n' "$NIX_SYSTEM"
+            printf '```text\n'
+            nix eval --no-update-lock-file --raw "$lab.drvPath"
+            printf '\n'
+            nix eval --no-update-lock-file --raw "$agent.drvPath"
+            printf '\n'
+            printf 'Sysbox runtime Go module hash: '
+            nix eval --no-update-lock-file --raw "$lab.runtimeVendorHash"
+            printf '\n'
+            sha256sum result-lab/bin/{sysbox-fs,sysbox-runc,proc-mount-helper,sysfs-mount-helper} result-agent/bin/cilium-agent
+            printf '```\n'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Save release build record
         if: inputs.save-records
