@@ -151,17 +151,17 @@
     "transfer": {
       "flake": false,
       "locked": {
-        "lastModified": 1792199986,
-        "narHash": "sha256-ZI154x46aPIlgiKsHSP/prgbzq3LsEizrPY3oegZAPM=",
+        "lastModified": 1795398858,
+        "narHash": "sha256-Z3IbBxFKlf9NxZR/FX8LUmtVX+L9oNKOsomKzP9k0mg=",
         "owner": "michibiki-io",
         "repo": "sysbox-proc-transfer",
-        "rev": "122de40f8a8ad70973f827fe59ab9d8a60478ded",
+        "rev": "92292991eaef1e4b766c66e8a6d2ae8765b94af0",
         "type": "github"
       },
       "original": {
         "owner": "michibiki-io",
         "repo": "sysbox-proc-transfer",
-        "rev": "122de40f8a8ad70973f827fe59ab9d8a60478ded",
+        "rev": "92292991eaef1e4b766c66e8a6d2ae8765b94af0",
         "type": "github"
       }
     }

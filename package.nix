@@ -64,6 +64,7 @@ buildGoModule (finalAttrs: {
   patches = [
     "${transfer}/patches/proc-transfer.patch"
     "${transfer}/patches/sysfs-transfer.patch"
+    "${transfer}/patches/fuse-overlay-mount.patch"
   ];
   nativeBuildInputs = [ pkg-config protobuf protocGenGo ];
   buildInputs = [ libseccomp ];
@@ -98,6 +99,7 @@ buildGoModule (finalAttrs: {
     export GOFLAGS="$GOFLAGS -ldflags=-linkmode=external"
     tests=${transfer}/tests
     install -m644 "$tests/upstream/proc_policy_test.go" seccomp/
+    install -m644 "$tests/upstream/fuse_mount_target_test.go" "$tests/upstream/mount_propagation_test.go" seccomp/
     install -Dm644 "$tests/unit/lifecycle.c" seccomp/testdata/proc_lifecycle.c
     install -m644 "$tests/upstream/sysfs_policy_test.go" sysfstransfer/policy_test.go
     install -m644 "$tests/upstream/sysfs_snapshot_test.go" mount/
@@ -129,8 +131,13 @@ buildGoModule (finalAttrs: {
       echo "Skipping sysfs mount fixture cases because /sys is absent in the build sandbox"
       go test -v ./sysfstransfer -skip '^(TestMissingAcquisition|TestRootMountIDMismatch)$'
     fi
-    go test -tags 'netgo osusergo' ./seccomp \
-      -run '^TestProc(PolicyBeforeNestedTransfer|RequesterThreadPidfd|TransferInvalidNotificationDoesNotLaunch|TransferRealNotification)$' -count=1
+    go test -v -tags 'netgo osusergo' ./seccomp \
+      -run '^Test(Proc(PolicyBeforeNestedTransfer|RequesterThreadPidfd|TransferInvalidNotificationDoesNotLaunch|TransferRealNotification)|RetryMountPropagationInKernel|FuseRequester(Descriptor|FilesystemIDs)|Fuse(TargetKeepsSelectedDescriptor|OverlayMountAncestry|BindAtimeOperation|WorkerReplyDeadline|WorkerSlots|WorkerProcess|LegacyMountFlags))$' \
+      -count=1
+    "$CC" -O2 -Wall -Wextra -Werror -Wno-unused-function -UNDEBUG \
+      "$tests/unit/fuse-mount-lookup.c" -o fuse-mount-lookup-test
+    ./fuse-mount-lookup-test
+    echo 'PASS: fuse-mount-lookup C regression'
     runHook postCheck
   '';
 

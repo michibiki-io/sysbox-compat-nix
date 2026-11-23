@@ -4,7 +4,7 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/04906337b6d53e8bb0eaf0470ae9f070a4d4eb55";
     transfer = {
-      url = "github:michibiki-io/sysbox-proc-transfer/122de40f8a8ad70973f827fe59ab9d8a60478ded";
+      url = "github:michibiki-io/sysbox-proc-transfer/92292991eaef1e4b766c66e8a6d2ae8765b94af0";
       flake = false;
     };
     root = {
