@@ -52,6 +52,8 @@ jobs:
           nix log ".#packages.$NIX_SYSTEM.sysbox-proc-transfer" > build.log
           for test in \
             TestMissingAcquisition TestRootMountIDMismatch \
+            TestProcPolicyBeforeNestedTransfer TestProcRequesterThreadPidfd \
+            TestProcTransferInvalidNotificationDoesNotLaunch TestProcTransferRealNotification \
             TestRetryMountPropagationInKernel \
             TestFuseRequesterDescriptor TestFuseRequesterFilesystemIDs \
             TestFuseTargetKeepsSelectedDescriptor TestFuseOverlayMountAncestry \
