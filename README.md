@@ -67,13 +67,16 @@ executable. Its container can execute it without a Nix store. The default
 Use an independent Sysbox and Docker instance on cgroup v2 with private mount
 and runtime state. Point the trial daemon at the two helpers from `result-lab`
 and register the trial runtime from the same output. Follow the upstream
-instructions for the scope of perf/JIT registration, BPF delegation, and cleanup.
+instructions for scoped perf/JIT registration and cleanup. Before Cilium's init
+containers run, the host-side fixture must provide a delegated bpffs mount at
+`/sys/fs/bpf` for each kind node. The init container also needs to be able to
+write the Cilium configuration under `/etc/sysctl.d` on each test node.
 Upstream exercised the XDP JIT response in a unit test and the live JIT
 response with a socket filter. [Upstream lab instructions](https://github.com/michibiki-io/sysbox-proc-transfer/blob/d0dd59c303feef1639407fb70d9408201a3a9786/docs/cilium-lab.md)
 
 Catalog maintainers can rebuild the amd64 fixture from `michibiki-io/kubara-catalogs`
 at `92cda8eb61bf6153e944dc03c01ac414e45290f1`. Keep the pinned images and the catalog's
-isolated Docker lifecycle. Copy the Nix Agent to each of the two kind nodes, mount it
+isolated Docker lifecycle in `test/e2e/scripts/isolated.py`. Copy the Nix Agent to each of the two kind nodes, mount it
 read-only in each Agent Pod, and keep the original CLI arguments. Apply the same
 DaemonSet override in the bootstrap, VTEP, and GitOps manifests. Run the five
 catalog network cases and the two upstream warning scenarios. For TCX, require
@@ -119,9 +122,9 @@ Nix ビルドの `sysbox-fs` は、Nix ストア内の glibc と libseccomp に�
 
 `result-lab/bin` に試験用の `sysbox-fs`、`sysbox-runc`、対応するマウントヘルパー2つが入ります。Sysbox の試験バイナリは依存先の Nix ストアを参照できるホストで実行します。`result-agent/bin/cilium-agent` は Cilium v1.20.4 の単体実行ファイルです。Agent コンテナへの Nix ストアのマウントは不要です。既定の `sysbox-proc-transfer` には標準の3パッチを適用します。
 
-cgroup v2 のホストで、マウントとランタイムの状態を分離した使い捨ての Sysbox と Docker を用意します。試験用デーモンには `result-lab` のヘルパー2つを指定し、同じ出力のランタイムを登録します。perf/JIT の登録範囲、BPF の委譲、後片付けは上流手順を参照してください。上流は XDP の JIT 応答を単体テストで、実際のリスナーからの JIT 応答をソケットフィルターで確認しています。 [上流の試験手順](https://github.com/michibiki-io/sysbox-proc-transfer/blob/d0dd59c303feef1639407fb70d9408201a3a9786/docs/cilium-lab.md)
+cgroup v2 のホストで、マウントとランタイムの状態を分離した使い捨ての Sysbox と Docker を用意します。試験用デーモンには `result-lab` のヘルパー2つを指定し、同じ出力のランタイムを登録します。perf/JIT の登録範囲と後片付けは上流手順を参照してください。Cilium の init container が動く前に、ホスト側の試験環境で kind の各ノードの `/sys/fs/bpf` に委譲済みの bpffs を用意します。各試験ノードの `/etc/sysctl.d` に init container が Cilium の設定を書けることも確認します。上流は XDP の JIT 応答を単体テストで、実際のリスナーからの JIT 応答をソケットフィルターで確認しています。 [上流の試験手順](https://github.com/michibiki-io/sysbox-proc-transfer/blob/d0dd59c303feef1639407fb70d9408201a3a9786/docs/cilium-lab.md)
 
-カタログの保守者は `michibiki-io/kubara-catalogs` の `92cda8eb61bf6153e944dc03c01ac414e45290f1` から amd64 の試験環境を再構築できます。固定済みのイメージと既存の隔離 Docker 手順を使います。Nix でビルドした Agent を kind の両ノードにコピーし、CLI 引数を維持したまま両 Pod に読み取り専用でマウントします。bootstrap、VTEP、GitOps のマニフェストには同じ DaemonSet の変更を加えます。既存のネットワークテスト5件と警告に対応する試験2件を実行します。TCX は両ノードで元の ifindex に別のリンク ID が付き、通信が戻ることを確認します。ソケットの試験では、BPF の `EPERM` 後に Netlink が選ばれ、対象の UDP ソケットだけが終了することを確認します。ホストが選択した Sysbox バイナリと、bootstrap、VTEP、GitOps の引き取り後に両 Pod で実行中の Agent の SHA-256 を記録します。 [上流の警告試験手順](https://github.com/michibiki-io/sysbox-proc-transfer/blob/d0dd59c303feef1639407fb70d9408201a3a9786/docs/cilium-lab.md#separate-cilium-patch-for-the-warnings)
+カタログの保守者は `michibiki-io/kubara-catalogs` の `92cda8eb61bf6153e944dc03c01ac414e45290f1` から amd64 の試験環境を再構築できます。固定済みのイメージと `test/e2e/scripts/isolated.py` の隔離 Docker 手順を使います。Nix でビルドした Agent を kind の両ノードにコピーし、CLI 引数を維持したまま両 Pod に読み取り専用でマウントします。bootstrap、VTEP、GitOps のマニフェストには同じ DaemonSet の変更を加えます。既存のネットワークテスト5件と警告に対応する試験2件を実行します。TCX は両ノードで元の ifindex に別のリンク ID が付き、通信が戻ることを確認します。ソケットの試験では、BPF の `EPERM` 後に Netlink が選ばれ、対象の UDP ソケットだけが終了することを確認します。ホストが選択した Sysbox バイナリと、bootstrap、VTEP、GitOps の引き取り後に両 Pod で実行中の Agent の SHA-256 を記録します。 [上流の警告試験手順](https://github.com/michibiki-io/sysbox-proc-transfer/blob/d0dd59c303feef1639407fb70d9408201a3a9786/docs/cilium-lab.md#separate-cilium-patch-for-the-warnings)
 
 ### 検証
 
