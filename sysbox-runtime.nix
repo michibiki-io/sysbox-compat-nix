@@ -1,17 +1,16 @@
 {
   buildGoModule,
+  common,
   inputs,
   libapparmor,
   libseccomp,
-  standard,
+  variant,
 }:
 
-buildGoModule (finalAttrs: {
-  pname = "sysbox-runc-cilium-lab";
-  inherit (standard) version src nativeBuildInputs postPatch;
+buildGoModule (finalAttrs: common // {
+  pname = "sysbox-runc-compat";
   modRoot = "sysbox-runc";
   subPackages = [ "." ];
-  patches = standard.patches ++ [ "${inputs.transfer}/patches/cilium-bpf-lab.patch" ];
 
   proxyVendor = true;
   vendorHash = "sha256-vbnjDfZUHLgphsJo9F7DOoy1GKvBM55v6ta0chd7ZSE=";
@@ -21,9 +20,15 @@ buildGoModule (finalAttrs: {
   tags = [ "seccomp" "apparmor" "idmapped_mnt" "netgo" "osusergo" ];
   ldflags = [
     "-linkmode=external"
-    "-X main.version=0.7.1-cilium-lab"
-    "-X main.commitId=${inputs.runc.rev}"
+    "-X main.version=0.7.1-${variant}"
+    "-X main.commitId=${inputs.runc.rev}+${variant}"
   ];
 
-  doCheck = false;
+  doCheck = true;
+  checkPhase = ''
+    runHook preCheck
+    go test -v -tags 'seccomp apparmor idmapped_mnt netgo osusergo' \
+      ./libsysbox/syscont -run '^TestCiliumNotificationsByDefault$' -count=1
+    runHook postCheck
+  '';
 })

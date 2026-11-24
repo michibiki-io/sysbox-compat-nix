@@ -1,5 +1,6 @@
 {
   buildGoModule,
+  callPackage,
   coreutils,
   glibc,
   inputs,
@@ -9,13 +10,11 @@
   protobuf,
   runCommand,
   stdenv,
-  ciliumRuntime ? null,
 }:
 
 let
   inherit (inputs) transfer;
-  ciliumLab = ciliumRuntime != null;
-  variant = if ciliumLab then "cilium-lab" else "proc-sysfs-transfer";
+  variant = "proc-sysfs-transfer";
   lock = builtins.fromJSON (builtins.readFile "${transfer}/build/sources.lock.json");
   sourceChecks = lib.mapAttrsToList (
     name: revision:
@@ -25,7 +24,7 @@ let
     lib.mapAttrsToList (path: hash: "${hash}  ${path}") lock.source_sha256
   );
 
-  sourceTree = runCommand "sysbox-transfer-source" { } ''
+  sourceTree = runCommand "sysbox-compat-source" { } ''
     (
       cd ${transfer}
       sha256sum --strict --check <<'HASHES'
@@ -50,41 +49,45 @@ let
     subPackages = [ "protoc-gen-go" ];
     doCheck = false;
   };
+  common = {
+    version = "${lock.upstream_tag}-${builtins.substring 0 7 transfer.rev}";
+    src = sourceTree;
+    patches = [
+      "${transfer}/patches/proc-transfer.patch"
+      "${transfer}/patches/sysfs-transfer.patch"
+      "${transfer}/patches/fuse-overlay-mount.patch"
+      "${transfer}/patches/cilium-bpf-lab.patch"
+    ];
+    nativeBuildInputs = [ pkg-config protobuf protocGenGo ];
+
+    postPatch = ''
+      for dir in sysbox-ipc/{sysboxFsGrpc/sysboxFsProtobuf,sysboxMgrGrpc/sysboxMgrProtobuf}; do
+        substituteInPlace "$dir/Makefile" \
+          --replace-fail /usr/local/include/ ${lib.getDev protobuf}/include/
+      done
+      make -C sysbox-ipc sysbox-ipc
+      test -s sysbox-ipc/sysboxFsGrpc/sysboxFsProtobuf/sysboxFsProtobuf.pb.go
+      test -s sysbox-ipc/sysboxMgrGrpc/sysboxMgrProtobuf/sysboxMgrProtobuf.pb.go
+    '';
+  };
+  runtime = callPackage ./sysbox-runtime.nix { inherit common inputs variant; };
 in
 assert lock.schema_version == 1;
 assert lib.all lib.id sourceChecks;
 assert lock.generator == "github.com/golang/protobuf/protoc-gen-go@v1.3.5";
-buildGoModule (finalAttrs: {
-  pname = if ciliumLab then "sysbox-cilium-lab" else "sysbox-proc-transfer";
-  version = "${lock.upstream_tag}-${builtins.substring 0 7 transfer.rev}";
-  src = sourceTree;
+buildGoModule (finalAttrs: common // {
+  pname = "sysbox-compat";
   modRoot = "sysbox-fs";
   subPackages = [ "cmd/sysbox-fs" ];
   proxyVendor = true;
-  passthru = { inherit (finalAttrs) vendorHash; } // lib.optionalAttrs ciliumLab {
-    runtimeVendorHash = ciliumRuntime.vendorHash;
+  passthru = {
+    inherit (finalAttrs) vendorHash;
+    inherit runtime;
+    runtimeVendorHash = runtime.vendorHash;
   };
   vendorHash = "sha256-8PitbwNlnJjFcNI4P2fOCzW10qq98WueH5z8xkXutJI=";
-
-  patches = [
-    "${transfer}/patches/proc-transfer.patch"
-    "${transfer}/patches/sysfs-transfer.patch"
-    "${transfer}/patches/fuse-overlay-mount.patch"
-  ]
-  ++ lib.optional ciliumLab "${transfer}/patches/cilium-bpf-lab.patch";
-  nativeBuildInputs = [ pkg-config protobuf protocGenGo ];
   buildInputs = [ libseccomp ];
   env.CGO_ENABLED = 1;
-
-  postPatch = ''
-    for dir in sysbox-ipc/{sysboxFsGrpc/sysboxFsProtobuf,sysboxMgrGrpc/sysboxMgrProtobuf}; do
-      substituteInPlace "$dir/Makefile" \
-        --replace-fail /usr/local/include/ ${lib.getDev protobuf}/include/
-    done
-    make -C sysbox-ipc sysbox-ipc
-    test -s sysbox-ipc/sysboxFsGrpc/sysboxFsProtobuf/sysboxFsProtobuf.pb.go
-    test -s sysbox-ipc/sysboxMgrGrpc/sysboxMgrProtobuf/sysboxMgrProtobuf.pb.go
-  '';
 
   # The FUSE regression belongs to a separate Go module.
   modPostBuild = ''
@@ -140,15 +143,11 @@ buildGoModule (finalAttrs: {
     go test -v -tags 'netgo osusergo' ./seccomp \
       -run '^Test(Proc(PolicyBeforeNestedTransfer|RequesterThreadPidfd|TransferInvalidNotificationDoesNotLaunch|TransferRealNotification)|RetryMountPropagationInKernel|FuseRequester(Descriptor|FilesystemIDs)|Fuse(TargetKeepsSelectedDescriptor|OverlayMountAncestry|BindAtimeOperation|WorkerReplyDeadline|WorkerSlots|WorkerProcess|LegacyMountFlags))$' \
       -count=1
+    go test -v -tags 'netgo osusergo' ./seccomp -run '^Test(PerfOutput|Cilium)' -count=1
     "$CC" -O2 -Wall -Wextra -Werror -Wno-unused-function -UNDEBUG \
       "$tests/unit/fuse-mount-lookup.c" -o fuse-mount-lookup-test
     ./fuse-mount-lookup-test
     echo 'PASS: fuse-mount-lookup C regression'
-  ''
-  + lib.optionalString ciliumLab ''
-    go test -v -tags 'netgo osusergo' ./seccomp -run '^Test(PerfOutputLab|CiliumJITProbe)' -count=1
-  ''
-  + ''
     runHook postCheck
   '';
 
@@ -158,14 +157,12 @@ buildGoModule (finalAttrs: {
         "${transfer}/helper/$helper.c" -o "$out/bin/$helper"
     done
     install -Dm644 "${transfer}/build/sources.lock.json" "$out/share/sysbox-proc-transfer/sources.lock.json"
-  ''
-  + lib.optionalString ciliumLab ''
-    ln -s "${ciliumRuntime}/bin/sysbox-runc" "$out/bin/sysbox-runc"
+    ln -s "${runtime}/bin/sysbox-runc" "$out/bin/sysbox-runc"
   '';
 
   meta = {
-    description = "Sysbox filesystem daemon and matching procfs and sysfs transfer helpers";
-    homepage = "https://github.com/michibiki-io/sysbox-proc-transfer";
+    description = "Sysbox filesystem daemon, OCI runtime, and matching mount helpers";
+    homepage = "https://github.com/michibiki-io/sysbox-compat";
     license = with lib.licenses; [ asl20 bsd3 mit lgpl21Only ];
     mainProgram = "sysbox-fs";
     platforms = [ "aarch64-linux" "x86_64-linux" ];

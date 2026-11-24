@@ -8,7 +8,7 @@ on:
         type: string
         required: true
       build-lab:
-        description: Build and check the opt-in Sysbox and Cilium lab outputs
+        description: Build and check the optional Cilium warning Agent
         type: boolean
         default: false
       save-records:
@@ -52,8 +52,15 @@ jobs:
 
       - name: Build and run focused Nix package tests
         run: |
-          nix build --no-update-lock-file --print-build-logs ".#packages.$NIX_SYSTEM.sysbox-proc-transfer"
-          nix log ".#packages.$NIX_SYSTEM.sysbox-proc-transfer" > build.log
+          packages=".#packages.$NIX_SYSTEM"
+          package="$packages.sysbox-compat"
+          standard=$(nix eval --no-update-lock-file --raw "$package.drvPath")
+          for alias in default sysbox-proc-transfer sysbox-cilium-lab; do
+            test "$(nix eval --no-update-lock-file --raw "$packages.$alias.drvPath")" = "$standard"
+          done
+          nix build --no-update-lock-file --print-build-logs "$package"
+          nix log "$package" > build.log
+          nix log "$package.runtime" > runtime.log
           for test in \
             TestMissingAcquisition TestRootMountIDMismatch \
             TestProcPolicyBeforeNestedTransfer TestProcRequesterThreadPidfd \
@@ -62,17 +69,21 @@ jobs:
             TestFuseRequesterDescriptor TestFuseRequesterFilesystemIDs \
             TestFuseTargetKeepsSelectedDescriptor TestFuseOverlayMountAncestry \
             TestFuseBindAtimeOperation TestFuseWorkerReplyDeadline \
-            TestFuseWorkerSlots TestFuseWorkerProcess TestFuseLegacyMountFlags; do
+            TestFuseWorkerSlots TestFuseWorkerProcess TestFuseLegacyMountFlags \
+            TestPerfOutputScope TestPerfOutputAttrs TestPerfOutputCgroupTarget \
+            TestCiliumCompatABIFallsBack TestPerfOutputContinuesAfterRegistrationRemoval \
+            TestCiliumJITProbeRequest TestCiliumJITProbeReply; do
             grep -F -- "--- PASS: $test (" build.log
           done
           grep -Fx -- 'PASS: fuse-mount-lookup C regression' build.log
-          for name in sysbox-fs proc-mount-helper sysfs-mount-helper; do
+          grep -F -- '--- PASS: TestCiliumNotificationsByDefault (' runtime.log
+          for name in sysbox-fs sysbox-runc proc-mount-helper sysfs-mount-helper; do
             test -x "result/bin/$name"
           done
 
       - name: Record source revisions and checksums
         run: |
-          package=".#packages.$NIX_SYSTEM.sysbox-proc-transfer"
+          package=".#packages.$NIX_SYSTEM.sysbox-compat"
           record="build-record-$NIX_SYSTEM.md"
           {
             printf '# Build record for %s\n\n' "$NIX_SYSTEM"
@@ -81,28 +92,20 @@ jobs:
             jq '[.nodes[].locked // empty]' flake.lock
             printf '```\n\n## Upstream source lock\n\n```json\n'
             cat result/share/sysbox-proc-transfer/sources.lock.json
-            printf '```\n\n## Go module cache\n\n`'
+            printf '```\n\n## Go module cache\n\n- sysbox-fs `'
             nix eval --no-update-lock-file --raw "$package.vendorHash"
+            printf '`\n- sysbox-runc `'
+            nix eval --no-update-lock-file --raw "$package.runtimeVendorHash"
             printf '`\n\n## Binary SHA-256\n\n```text\n'
-            (cd result && sha256sum bin/sysbox-fs bin/proc-mount-helper bin/sysfs-mount-helper)
+            (cd result && sha256sum bin/{sysbox-fs,sysbox-runc,proc-mount-helper,sysfs-mount-helper})
             printf '```\n'
           } > "$record"
           cat "$record" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Build the opt-in Sysbox and Cilium lab outputs
+      - name: Build the optional Cilium warning Agent
         if: inputs.build-lab
         run: |
-          lab=".#packages.$NIX_SYSTEM.sysbox-cilium-lab"
           agent=".#packages.$NIX_SYSTEM.cilium-warning-agent"
-          nix build --no-update-lock-file --print-build-logs --out-link result-lab "$lab"
-          nix log "$lab" > build-lab.log
-          for test in TestPerfOutputLabScope TestPerfOutputLabAttrs TestCiliumJITProbeRequest TestCiliumJITProbeReply; do
-            grep -F -- "--- PASS: $test (" build-lab.log
-          done
-          for name in sysbox-fs sysbox-runc proc-mount-helper sysfs-mount-helper; do
-            test -x "result-lab/bin/$name"
-          done
-
           nix build --no-update-lock-file --print-build-logs --out-link result-agent "$agent"
           cilium_rev=$(jq -er '.nodes.cilium.locked.rev' flake.lock)
           result-agent/bin/cilium-agent --version | grep -F -- "1.20.4 $cilium_rev 2026-10-23 go version"
@@ -113,16 +116,11 @@ jobs:
           fi
 
           {
-            printf '## Opt-in lab binaries (%s)\n\n' "$NIX_SYSTEM"
+            printf '## Optional Cilium warning Agent (%s)\n\n' "$NIX_SYSTEM"
             printf '```text\n'
-            nix eval --no-update-lock-file --raw "$lab.drvPath"
-            printf '\n'
             nix eval --no-update-lock-file --raw "$agent.drvPath"
             printf '\n'
-            printf 'Sysbox runtime Go module hash: '
-            nix eval --no-update-lock-file --raw "$lab.runtimeVendorHash"
-            printf '\n'
-            sha256sum result-lab/bin/{sysbox-fs,sysbox-runc,proc-mount-helper,sysfs-mount-helper} result-agent/bin/cilium-agent
+            sha256sum result-agent/bin/cilium-agent
             printf '```\n'
           } >> "$GITHUB_STEP_SUMMARY"
 
