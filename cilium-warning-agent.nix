@@ -30,7 +30,7 @@ buildGo126Module {
   '';
 
   meta = {
-    description = "Cilium Agent with the Sysbox lab warning patch";
+    description = "Cilium Agent with the optional Sysbox warning patch";
     license = lib.licenses.asl20;
     mainProgram = "cilium-agent";
     platforms = [ "aarch64-linux" "x86_64-linux" ];

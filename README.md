@@ -1,37 +1,54 @@
-# sysbox-proc-transfer-nix
+# sysbox-compat-nix / Nix 向け Sysbox 互換パッケージ
 
-Nix packaging for patched Sysbox with protected procfs and opt-in sysfs transfer in nested user namespaces.
+## Table of Contents / 目次
 
 - [English](#english)
+  - [Build](#build)
+  - [Use with NixOS](#use-with-nixos)
+  - [Cilium compatibility](#cilium-compatibility)
+  - [Optional Cilium warning Agent](#optional-cilium-warning-agent)
+  - [Verification](#verification)
 - [日本語](#日本語)
+  - [ビルド](#ビルド)
+  - [NixOS で利用する](#nixos-で利用する)
+  - [Cilium 互換機能](#cilium-互換機能)
+  - [警告対応版 Cilium Agent](#警告対応版-cilium-agent)
+  - [検証](#検証)
 
 ## English
 
 ### Build
 
-The Flake provides `sysbox-proc-transfer` for `aarch64-linux` and `x86_64-linux`. Each build installs the patched `sysbox-fs` and its matching `proc-mount-helper` and `sysfs-mount-helper` in `bin/`. The source, build dependencies and Go modules are pinned. See [the pinned upstream project](https://github.com/michibiki-io/sysbox-proc-transfer/tree/d0dd59c303feef1639407fb70d9408201a3a9786) for compatibility and third-party license notices.
+The `sysbox-compat` Flake output is available for `aarch64-linux` and
+`x86_64-linux`. It provides `sysbox-fs`, `sysbox-runc`,
+`proc-mount-helper`, and `sysfs-mount-helper` in `bin/`.
+The `default`, `sysbox-proc-transfer`, and `sysbox-cilium-lab` outputs
+point to the same package. Sources and Go dependencies are pinned. Use the
+upstream repository for the source, compatibility notes, and license notices.
+[Pinned sysbox-compat source](https://github.com/michibiki-io/sysbox-compat/tree/905e09e1e417364ae08ae3713ce7dfb9eab681a1)
 
-Set `rev` to the full commit SHA of this packaging repository, then build on either supported architecture with Flakes enabled.
+Set `rev` to the full commit SHA of this packaging repository.
 
 ```sh
 rev=REPLACE_WITH_FULL_PACKAGING_COMMIT_SHA
-nix build --no-link "github:michibiki-io/sysbox-proc-transfer-nix/$rev#sysbox-proc-transfer"
+nix build --no-link "github:michibiki-io/sysbox-compat-nix/$rev#sysbox-compat"
 ```
 
-Release jobs build and test both targets on their native runners. The release contains source and build records with pinned input checksums and the SHA-256 of each executable.
-
-The Nix build links `sysbox-fs` against glibc and libseccomp from the Nix store. Both mount helpers are statically linked.
+The daemon and OCI runtime use their Nix store closure. Both mount helpers
+are statically linked. The source lock is installed at
+`share/sysbox-proc-transfer/sources.lock.json`.
 
 ### Use with NixOS
 
-Add the following to an existing configuration that imports the host's `services.sysboxProcTransfer` module. Replace the placeholder with the same full commit SHA used to build the package.
+In a host configuration that already imports `services.sysboxProcTransfer`,
+select the package from the same full revision used for the build.
 
 ```nix
 { pkgs, ... }:
 let
-  transfer = builtins.getFlake
-    "github:michibiki-io/sysbox-proc-transfer-nix/REPLACE_WITH_FULL_PACKAGING_COMMIT_SHA";
-  package = transfer.packages.${pkgs.stdenv.hostPlatform.system}.sysbox-proc-transfer;
+  compat = builtins.getFlake
+    "github:michibiki-io/sysbox-compat-nix/REPLACE_WITH_FULL_PACKAGING_COMMIT_SHA";
+  package = compat.packages.${pkgs.stdenv.hostPlatform.system}.sysbox-compat;
 in
 {
   services.sysboxProcTransfer = {
@@ -39,95 +56,138 @@ in
     inherit package;
   };
 
-  # Opt in only when the container meets the requirements below.
+  # Enable sysfs transfer for containers that meet the requirements below.
   # systemd.services.sysbox-fs.environment.SYSBOX_SYSFS_TRANSFER_HELPER =
   #   "${package}/bin/sysfs-mount-helper";
 }
 ```
 
-The consuming module sets the daemon and proc helper paths. For sysfs transfer, use the sysfs helper from the same package. Container registration requires visible `/sys` mount and protection metadata. Transfer requires a `sysfs` mount at `/sys` with mountinfo Root `/` and a real `/tmp` directory inside the outer rootfs. See [upstream compatibility](https://github.com/michibiki-io/sysbox-proc-transfer/blob/d0dd59c303feef1639407fb70d9408201a3a9786/docs/compatibility.md).
+The NixOS module selects the filesystem daemon and proc helper. Configure
+the OCI runtime entry that runs the workload to execute
+`${package}/bin/sysbox-runc`, preserving any host-specific runtime wrapper
+settings. Use the daemon, runtime, and helpers from the same package revision.
 
-### Opt-in Cilium lab
+Container registration requires visible `/sys` mount and protection metadata.
+Sysfs transfer requires a `sysfs` mount at `/sys` with mountinfo Root `/`
+and a real `/tmp` directory in the outer rootfs.
+[Upstream filesystem compatibility](https://github.com/michibiki-io/sysbox-compat/blob/905e09e1e417364ae08ae3713ce7dfb9eab681a1/docs/compatibility.md)
 
-Both native Linux architectures can build the lab packages. Use the same packaging
-revision as above.
+### Cilium compatibility
+
+The standard daemon and runtime support the narrow perf output and JIT probe
+requests without setting `SYSBOX_EXPERIMENT_PERF_OUTPUT`. The host provisions
+cgroup v2, delegated bpffs and a BPF token for the workload, and per-job cgroup
+registration. Existing OCI seccomp denials take precedence. Requests outside
+the authorization or supported shapes continue in the kernel.
+
+For kind, prepare the delegated bpffs at `/sys/fs/bpf` for each node before
+its Cilium init containers start, and make `/etc/sysctl.d` writable for the
+configuration they install. The upstream guide specifies the required kernel
+features, the host-owned registry and its cleanup, and the limits of the perf
+event and JIT response.
+[Upstream host requirements and runtime checks](https://github.com/michibiki-io/sysbox-compat/blob/905e09e1e417364ae08ae3713ce7dfb9eab681a1/docs/cilium-lab.md#standard-build-and-host-requirements)
+
+### Optional Cilium warning Agent
+
+Use `cilium-warning-agent` when reproducing the separate TCX recovery and
+socket termination scenarios. It provides a standalone Cilium v1.20.4
+executable for the disposable kind fixture. The catalog regression run with
+the stock Agent is also documented upstream.
+[Warning test procedure](https://github.com/michibiki-io/sysbox-compat/blob/905e09e1e417364ae08ae3713ce7dfb9eab681a1/docs/cilium-lab.md#separate-cilium-patch-for-the-warnings)
 
 ```sh
-base="github:michibiki-io/sysbox-proc-transfer-nix/$rev"
-nix build --out-link result-lab "$base#sysbox-cilium-lab"
-nix build --out-link result-agent "$base#cilium-warning-agent"
+nix build --out-link result-agent "github:michibiki-io/sysbox-compat-nix/$rev#cilium-warning-agent"
 ```
-
-`result-lab/bin` contains the lab `sysbox-fs`, `sysbox-runc`, and both matching
-mount helpers. Run these Sysbox binaries on a Nix host with their store closure
-available. `result-agent/bin/cilium-agent` is a standalone Cilium v1.20.4
-executable. Its container can execute it without a Nix store. The default
-`sysbox-proc-transfer` output uses the standard three-patch series.
-
-Use an independent Sysbox and Docker instance on cgroup v2 with private mount
-and runtime state. Point the trial daemon at the two helpers from `result-lab`
-and register the trial runtime from the same output. Follow the upstream
-instructions for scoped perf/JIT registration and cleanup. Before Cilium's init
-containers run, the host-side fixture must provide a delegated bpffs mount at
-`/sys/fs/bpf` for each kind node. The init container also needs to be able to
-write the Cilium configuration under `/etc/sysctl.d` on each test node.
-Upstream exercised the XDP JIT response in a unit test and the live JIT
-response with a socket filter. [Upstream lab instructions](https://github.com/michibiki-io/sysbox-proc-transfer/blob/d0dd59c303feef1639407fb70d9408201a3a9786/docs/cilium-lab.md)
-
-Catalog maintainers can rebuild the amd64 fixture from `michibiki-io/kubara-catalogs`
-at `92cda8eb61bf6153e944dc03c01ac414e45290f1`. Keep the pinned images and the catalog's
-isolated Docker lifecycle in `test/e2e/scripts/isolated.py`. Copy the Nix Agent to each of the two kind nodes, mount it
-read-only in each Agent Pod, and keep the original CLI arguments. Apply the same
-DaemonSet override in the bootstrap, VTEP, and GitOps manifests. Run the five
-catalog network cases and the two upstream warning scenarios. For TCX, require
-a new link ID at the original ifindex and recovered traffic on each node. For
-socket termination, require Netlink fallback after BPF returns `EPERM`, and
-verify that only the selected connected UDP socket is terminated. Record the
-SHA-256 of the lab host's selected Sysbox binaries and the Agent executables
-running in both Pods at bootstrap, during VTEP, and after GitOps reconciliation.
-[Upstream warning test procedure](https://github.com/michibiki-io/sysbox-proc-transfer/blob/d0dd59c303feef1639407fb70d9408201a3a9786/docs/cilium-lab.md#separate-cilium-patch-for-the-warnings)
 
 ### Verification
 
-The native CI builds run the focused upstream checks. The logs confirm the FUSE mount target and propagation Go tests and the C helper regression on both architectures. Two other regression tests need a sysfs mount in the Linux build sandbox. CI adds `/sys` with `extra-sandbox-paths = /sys` and checks that both tests passed. On a default Nix sandbox without that mount, the build logs that it skips the sysfs mount fixture cases.
+CI builds on both native architectures. It checks output aliases, the two
+matching Sysbox binaries and both helpers, and the focused procfs, sysfs, FUSE,
+perf, JIT, and runtime notification tests. CI supplies `/sys` to the Nix
+sandbox and checks the two mount-dependent tests. A default sandbox without
+`/sys` logs the mount fixture skips. The test workflow also checks the optional
+Agent version and standalone ELF. Release records include source revisions,
+both Go dependency hashes, and checksums of the four standard binaries.
 
-The runtime scope for this package is arm64 NixOS procfs using upstream `tests/runtime/verify.sh` as a non-root user. Confirm that the running daemon and configured proc helper use the selected package before running the verifier. amd64 and sysfs runtime verification are out of scope for this package's initial acceptance. The upstream sysfs consumer gate remains pending.
+For the arm64 NixOS procfs runtime check, confirm the configured daemon and
+proc helper use the selected package, then run upstream `tests/runtime/verify.sh`
+as a non-root user inside the configured container. The native package CI
+covers builds and focused checks. Use the upstream disposable comparison for
+perf and JIT runtime behavior, and the upstream filesystem guide for sysfs
+runtime validation.
+[Disposable runtime comparison](https://github.com/michibiki-io/sysbox-compat/blob/905e09e1e417364ae08ae3713ce7dfb9eab681a1/docs/cilium-lab.md#disposable-runtime-comparison)
 
 ## 日本語
 
 ### ビルド
 
-Flake は `aarch64-linux` と `x86_64-linux` 向けの `sysbox-proc-transfer` を提供します。パッチを適用した `sysbox-fs`、対応する `proc-mount-helper` と `sysfs-mount-helper` が `bin/` に入ります。ソース、ビルド依存、Go モジュールは固定しています。対応環境と第三者ライセンスは [固定した上流リポジトリ](https://github.com/michibiki-io/sysbox-proc-transfer/tree/d0dd59c303feef1639407fb70d9408201a3a9786) を参照してください。
+Flake は `aarch64-linux` と `x86_64-linux` 向けに `sysbox-compat` を提供します。
+`bin/` には `sysbox-fs`、`sysbox-runc`、`proc-mount-helper`、`sysfs-mount-helper` が入ります。
+`default`、`sysbox-proc-transfer`、`sysbox-cilium-lab` は同じパッケージを指します。
+ソースと Go の依存は固定しています。対応環境とライセンスは上流を参照してください。
+[固定した sysbox-compat ソース](https://github.com/michibiki-io/sysbox-compat/tree/905e09e1e417364ae08ae3713ce7dfb9eab681a1)
 
-`rev` にこのパッケージ用リポジトリの完全なコミット SHA を設定し、Flakes を有効にした対応アーキテクチャの環境で実行します。
+`rev` には、このパッケージ用リポジトリの完全なコミット SHA を指定します。
 
 ```sh
 rev=REPLACE_WITH_FULL_PACKAGING_COMMIT_SHA
-nix build --no-link "github:michibiki-io/sysbox-proc-transfer-nix/$rev#sysbox-proc-transfer"
+nix build --no-link "github:michibiki-io/sysbox-compat-nix/$rev#sysbox-compat"
 ```
 
-リリースジョブは各アーキテクチャのネイティブランナーでビルドとテストを実行します。リリースではソースと、入力のチェックサムおよび実行ファイルごとの SHA-256 を記録したビルド記録を配布します。
-
-Nix ビルドの `sysbox-fs` は、Nix ストア内の glibc と libseccomp に動的リンクします。2つのマウント用ヘルパーは静的リンクです。
+デーモンと OCI ランタイムの実行には、Nix ストア上の依存が必要です。
+2 つのマウント用ヘルパーは静的リンクです。
+ソースロックは `share/sysbox-proc-transfer/sources.lock.json` に入ります。
 
 ### NixOS で利用する
 
-ホスト側の `services.sysboxProcTransfer` モジュールを読み込んでいる構成に設定を追加します。Flake の参照にはビルドで指定した完全なコミット SHA を使います。具体的な記述は、英語節の [NixOS 設定例](#use-with-nixos) を参照してください。
+`services.sysboxProcTransfer` を導入済みのホストでは、ビルドで指定した
+完全なコミット SHA でパッケージを設定します。
+[NixOS 設定例](#use-with-nixos)
 
-デーモンと proc ヘルパーのパスは利用側モジュールが設定します。sysfs 転送も使う場合は、設定例の `SYSBOX_SYSFS_TRANSFER_HELPER` に同じパッケージのヘルパーを指定します。コンテナの登録には `/sys` のマウントと保護情報が必要です。転送には `/sys` が型 `sysfs` かつ mountinfo の Root が `/` であることと、外側 rootfs に実ディレクトリの `/tmp` があることが必要です。詳細は [上流の互換性文書](https://github.com/michibiki-io/sysbox-proc-transfer/blob/d0dd59c303feef1639407fb70d9408201a3a9786/docs/compatibility.md) を参照してください。
+NixOS モジュールはデーモンと proc ヘルパーを選びます。
+対象のコンテナを起動する OCI ランタイムには `${package}/bin/sysbox-runc` を指定します。
+ホスト固有のランタイムラッパーを使用している場合は、その設定を保持します。
+デーモン、ランタイム、ヘルパーは同じパッケージのリビジョンで揃えます。
 
-### Cilium 試験パッケージ
+コンテナの登録には、参照できる `/sys` マウントと保護情報が必要です。
+sysfs 転送には、型が `sysfs`、mountinfo の Root が `/` である `/sys` と、
+外側 rootfs 内の実ディレクトリ `/tmp` が必要です。
+[上流のファイルシステム互換性](https://github.com/michibiki-io/sysbox-compat/blob/905e09e1e417364ae08ae3713ce7dfb9eab681a1/docs/compatibility.md)
 
-対応する Linux 2 アーキテクチャで試験パッケージをビルドできます。同じパッケージのリビジョンを指定します。 [ビルドコマンド](#opt-in-cilium-lab)
+### Cilium 互換機能
 
-`result-lab/bin` に試験用の `sysbox-fs`、`sysbox-runc`、対応するマウントヘルパー2つが入ります。Sysbox の試験バイナリは依存先の Nix ストアを参照できるホストで実行します。`result-agent/bin/cilium-agent` は Cilium v1.20.4 の単体実行ファイルです。Agent コンテナへの Nix ストアのマウントは不要です。既定の `sysbox-proc-transfer` には標準の3パッチを適用します。
+標準のデーモンとランタイムで、`SYSBOX_EXPERIMENT_PERF_OUTPUT` の設定なしに
+対象の perf 出力と JIT プローブを利用できます。
+ホストには cgroup v2、ワークロードに委譲する bpffs と BPF token、ジョブ単位の cgroup 登録が必要です。
+既存の OCI seccomp による拒否が優先されます。認可や対応する要求の条件を満たさない呼び出しはカーネルに委ねます。
 
-cgroup v2 のホストで、マウントとランタイムの状態を分離した使い捨ての Sysbox と Docker を用意します。試験用デーモンには `result-lab` のヘルパー2つを指定し、同じ出力のランタイムを登録します。perf/JIT の登録範囲と後片付けは上流手順を参照してください。Cilium の init container が動く前に、ホスト側の試験環境で kind の各ノードの `/sys/fs/bpf` に委譲済みの bpffs を用意します。各試験ノードの `/etc/sysctl.d` に init container が Cilium の設定を書けることも確認します。上流は XDP の JIT 応答を単体テストで、実際のリスナーからの JIT 応答をソケットフィルターで確認しています。 [上流の試験手順](https://github.com/michibiki-io/sysbox-proc-transfer/blob/d0dd59c303feef1639407fb70d9408201a3a9786/docs/cilium-lab.md)
+kind では Cilium の init container が動く前に、各ノードの `/sys/fs/bpf` に委譲済みの bpffs を用意します。
+init container が Cilium の設定を書く `/etc/sysctl.d` も書き込み可能にします。
+カーネルの前提、ホスト側の登録と後片付け、perf イベントと JIT 応答の範囲は上流を参照してください。
+[上流のホスト要件と実行時の検証](https://github.com/michibiki-io/sysbox-compat/blob/905e09e1e417364ae08ae3713ce7dfb9eab681a1/docs/cilium-lab.md#standard-build-and-host-requirements)
 
-カタログの保守者は `michibiki-io/kubara-catalogs` の `92cda8eb61bf6153e944dc03c01ac414e45290f1` から amd64 の試験環境を再構築できます。固定済みのイメージと `test/e2e/scripts/isolated.py` の隔離 Docker 手順を使います。Nix でビルドした Agent を kind の両ノードにコピーし、CLI 引数を維持したまま両 Pod に読み取り専用でマウントします。bootstrap、VTEP、GitOps のマニフェストには同じ DaemonSet の変更を加えます。既存のネットワークテスト5件と警告に対応する試験2件を実行します。TCX は両ノードで元の ifindex に別のリンク ID が付き、通信が戻ることを確認します。ソケットの試験では、BPF の `EPERM` 後に Netlink が選ばれ、対象の UDP ソケットだけが終了することを確認します。ホストが選択した Sysbox バイナリと、bootstrap、VTEP、GitOps の引き取り後に両 Pod で実行中の Agent の SHA-256 を記録します。 [上流の警告試験手順](https://github.com/michibiki-io/sysbox-proc-transfer/blob/d0dd59c303feef1639407fb70d9408201a3a9786/docs/cilium-lab.md#separate-cilium-patch-for-the-warnings)
+### 警告対応版 Cilium Agent
+
+TCX の復旧とソケット終了を再現するときは `cilium-warning-agent` を使います。
+使い捨ての kind 環境で実行できる、Cilium v1.20.4 の単体バイナリです。
+未改変 Agent で完走したカタログ試験の記録も上流にあります。
+[警告に対応する試験手順](https://github.com/michibiki-io/sysbox-compat/blob/905e09e1e417364ae08ae3713ce7dfb9eab681a1/docs/cilium-lab.md#separate-cilium-patch-for-the-warnings)
+
+```sh
+nix build --out-link result-agent "github:michibiki-io/sysbox-compat-nix/$rev#cilium-warning-agent"
+```
 
 ### 検証
 
-ネイティブランナーでの CI は、固定した上流の回帰テストを実行します。両アーキテクチャのログで、FUSE のマウント対象と伝播を検証する Go テスト、および C ヘルパーの回帰テストの成功を確認します。別の2件には、ビルド用の Linux サンドボックス内に sysfs マウントが必要です。CI は `extra-sandbox-paths = /sys` で `/sys` を渡し、2件の成功を確認します。標準の Nix サンドボックスにこのマウントがなければ、sysfs マウントを必要とするテストを省略したことがビルドログに出ます。
+CI は両アーキテクチャでネイティブにビルドします。
+出力の別名、対応する Sysbox バイナリとヘルパー 4 点、および procfs、sysfs、FUSE、perf、JIT、ランタイム通知の回帰テストを確認します。
+CI の Nix サンドボックスには `/sys` を渡し、マウントを必要とするテスト 2 件の成功を確認します。
+`/sys` を渡さない標準のサンドボックスでは、それらを省略したことがログに出ます。
+テストワークフローはオプションの Agent のバージョンと単体 ELF も検証します。
+リリース用のビルド記録には、ソースリビジョン、両方の Go 依存ハッシュ、標準バイナリ 4 点のチェックサムが入ります。
 
-実行時の検証対象は arm64 NixOS 上の procfs です。稼働中のデーモンと設定された proc ヘルパーが選択したパッケージを参照することを確認してから、構成済みの Sysbox コンテナ内で上流の `tests/runtime/verify.sh` を一般ユーザーとして実行します。amd64 と sysfs の実行時検証は初回の受け入れ範囲外で、上流の sysfs 利用側の受け入れ検証は未完了です。
+arm64 NixOS で procfs を検証するときは、稼働中のデーモンと proc ヘルパーが選択したパッケージを参照することを確認し、
+構成済みコンテナ内で上流の `tests/runtime/verify.sh` を一般ユーザーとして実行します。
+Nix パッケージの CI はビルドと個別テストを対象とします。
+perf と JIT の実行時の挙動は上流の使い捨て環境で比較し、sysfs の実行時の検証は上流のファイルシステム互換性に従います。
+[使い捨て環境での比較](https://github.com/michibiki-io/sysbox-compat/blob/905e09e1e417364ae08ae3713ce7dfb9eab681a1/docs/cilium-lab.md#disposable-runtime-comparison)

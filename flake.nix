@@ -1,10 +1,10 @@
 {
-  description = "Nix package for Sysbox procfs and opt-in sysfs transfer";
+  description = "Nix packaging for the standard Sysbox compatibility runtime";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/04906337b6d53e8bb0eaf0470ae9f070a4d4eb55";
     transfer = {
-      url = "github:michibiki-io/sysbox-proc-transfer/d0dd59c303feef1639407fb70d9408201a3a9786";
+      url = "github:michibiki-io/sysbox-compat/905e09e1e417364ae08ae3713ce7dfb9eab681a1";
       flake = false;
     };
     cilium = {
@@ -49,14 +49,11 @@
         let
           pkgs = import nixpkgs { inherit system; };
           package = pkgs.callPackage ./package.nix { inherit inputs; };
-          ciliumRuntime = pkgs.callPackage ./cilium-runtime.nix {
-            inherit inputs;
-            standard = package;
-          };
         in
         {
+          sysbox-compat = package;
           sysbox-proc-transfer = package;
-          sysbox-cilium-lab = package.override { inherit ciliumRuntime; };
+          sysbox-cilium-lab = package;
           cilium-warning-agent = pkgs.callPackage ./cilium-warning-agent.nix { inherit inputs; };
           default = package;
         }
